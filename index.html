@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JS DropCheck - Instant JavaScript Syntax & Validation Checker</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                        },
+                        darkbg: '#0f172a',
+                        darkcard: '#1e293b',
+                        darkborder: '#334155'
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Fira Code', 'Monaco', 'monospace'],
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Acorn JS Parser for AST Analysis -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js"></script>
+
+    <style>
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        
+        /* Code line highlight styling */
+        .error-line {
+            background-color: rgba(239, 68, 68, 0.2) !important;
+            border-left: 4px solid #ef4444;
+        }
+        .error-underline {
+            text-decoration: underline wavy #ef4444;
+            font-weight: bold;
+        }
+
+        /* Drag zone pulse animation */
+        @keyframes pulse-border {
+            0%, 100% { border-color: #38bdf8; }
+            50% { border-color: #0284c7; }
+        }
+        .drag-over {
+            animation: pulse-border 1.5s infinite;
+            background-color: rgba(14, 165, 233, 0.08) !important;
+        }
+
+        /* Sync scrolling between line numbers and code textarea */
+        .editor-container {
+            display: grid;
+            grid-template-columns: 50px 1fr;
+        }
+    </style>
+</head>
+<body class="bg-darkbg text-slate-100 font-sans min-h-screen flex flex-col selection:bg-brand-500 selection:text-white">
+
+    <!-- Top Navigation Header -->
+    <header class="border-b border-darkborder bg-darkcard/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-amber-400 flex items-center justify-center text-slate-950 font-bold text-xl shadow-lg shadow-brand-500/20">
+                    <i class="fa-brands font-mono text-xl">JS</i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                        JS DropCheck
+                        <span class="text-xs font-mono font-medium px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20">v1.0</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Instant JavaScript Syntax & AST Inspector</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3">
+                <button id="btnLoadValidSample" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-circle-check"></i> Valid Sample
+                </button>
+                <button id="btnLoadBrokenSample" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-400 border border-slate-700 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-bug"></i> Broken Sample
+                </button>
+                <button id="btnClear" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-right"></i> Reset
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6">
+
+        <!-- Top Status Banner -->
+        <div id="statusBanner" class="hidden transition-all duration-300">
+            <!-- Dynamic Content inserted via JS -->
+        </div>
+
+        <!-- Mode Toggle & Controls -->
+        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
+            <div class="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800">
+                <button id="tabDropzone" class="px-4 py-2 text-xs font-medium rounded-lg bg-brand-600 text-white shadow-sm transition flex items-center gap-2">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Drop File
+                </button>
+                <button id="tabEditor" class="px-4 py-2 text-xs font-medium rounded-lg text-slate-400 hover:text-white transition flex items-center gap-2">
+                    <i class="fa-solid fa-code"></i> Live Editor
+                </button>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <label for="ecmaVersion" class="text-xs text-slate-400">ECMAScript Version:</label>
+                <select id="ecmaVersion" class="bg-slate-900 text-xs border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-500">
+                    <option value="latest" selected>ES Latest (2024 / ESNext)</option>
+                    <option value="2022">ES2022</option>
+                    <option value="2020">ES2020</option>
+                    <option value="2015">ES6 (ES2015)</option>
+                    <option value="5">ES5</option>
+                </select>
+
+                <label for="sourceType" class="text-xs text-slate-400 ml-2">Source Type:</label>
+                <select id="sourceType" class="bg-slate-900 text-xs border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-500">
+                    <option value="module" selected>ES Module (import/export)</option>
+                    <option value="script">Script</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Main Workspace (Dropzone / Editor / Results Split) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+
+            <!-- Left / Input Column (7 cols) -->
+            <div class="lg:col-span-7 flex flex-col gap-4">
+
+                <!-- File Dropzone Component -->
+                <div id="dropzoneContainer" class="border-2 border-dashed border-slate-700 hover:border-brand-500/50 bg-slate-900/50 rounded-2xl p-8 text-center transition flex flex-col items-center justify-center min-h-[360px] cursor-pointer group relative overflow-hidden">
+                    <input type="file" id="fileInput" accept=".js,.mjs,.cjs,.txt,.json" class="absolute inset-0 opacity-0 cursor-pointer z-10">
+                    
+                    <div class="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-brand-400 group-hover:scale-110 group-hover:bg-brand-500/10 transition duration-300 mb-4 shadow-xl">
+                        <i class="fa-solid fa-file-code text-3xl"></i>
+                    </div>
+
+                    <h3 class="text-base font-semibold text-slate-200 mb-1">Drag and drop your JavaScript file here</h3>
+                    <p class="text-xs text-slate-400 max-w-sm mb-4">Supports <code class="bg-slate-800 px-1.5 py-0.5 rounded text-brand-300 font-mono">.js</code>, <code class="bg-slate-800 px-1.5 py-0.5 rounded text-brand-300 font-mono">.mjs</code>, <code class="bg-slate-800 px-1.5 py-0.5 rounded text-brand-300 font-mono">.cjs</code>, or text files up to 10MB.</p>
+                    
+                    <button class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-xl border border-slate-700 transition flex items-center gap-2">
+                        <i class="fa-solid fa-folder-open"></i> Browse File
+                    </button>
+                </div>
+
+                <!-- Code Editor View (Hidden initially unless switched or loaded) -->
+                <div id="editorContainer" class="hidden flex-1 flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl min-h-[420px]">
+                    <div class="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                        <span id="activeFileName" class="font-mono flex items-center gap-2 text-slate-300">
+                            <i class="fa-regular fa-file-code text-brand-400"></i> <span id="fileNameText">input.js</span>
+                        </span>
+                        <div class="flex items-center gap-3">
+                            <span id="charCount">0 chars</span>
+                            <button id="btnCopyCode" title="Copy Code" class="hover:text-white transition">
+                                <i class="fa-regular fa-copy"></i> Copy
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="editor-container flex-1 relative font-mono text-sm leading-6">
+                        <!-- Line Numbers -->
+                        <div id="lineNumbers" class="py-3 pr-2 text-right bg-slate-950 text-slate-600 select-none font-mono text-xs border-r border-slate-800">
+                            1
+                        </div>
+                        <!-- Editable Code Area -->
+                        <textarea id="codeEditor" spellcheck="false" placeholder="// Paste or type your JavaScript code here..." class="w-full h-full bg-slate-900 text-slate-200 p-3 focus:outline-none resize-none font-mono leading-6 whitespace-pre"></textarea>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right / Output & Analytics Column (5 cols) -->
+            <div class="lg:col-span-5 flex flex-col gap-4">
+
+                <!-- Diagnostics & AST Summary Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                            <i class="fa-solid fa-microscope text-brand-400"></i> Syntax Analysis
+                        </h2>
+                        <span id="validationBadge" class="text-xs px-2.5 py-1 rounded-full font-medium bg-slate-800 text-slate-400">
+                            Awaiting Code
+                        </span>
+                    </div>
+
+                    <!-- Diagnostics Output Details -->
+                    <div id="diagnosticsOutput" class="space-y-3 text-xs">
+                        <p class="text-slate-400 italic">No code checked yet. Upload a file or type code in the editor to instantly check syntax validity.</p>
+                    </div>
+                </div>
+
+                <!-- Code Stats & Metrics -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4">
+                    <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2 border-b border-slate-800 pb-3">
+                        <i class="fa-solid fa-chart-simple text-brand-400"></i> Code Metrics & AST Stats
+                    </h2>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+                            <span class="text-[11px] text-slate-400 block mb-1">Total Lines</span>
+                            <span id="statLines" class="text-lg font-bold font-mono text-slate-100">0</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+                            <span class="text-[11px] text-slate-400 block mb-1">File Size</span>
+                            <span id="statSize" class="text-lg font-bold font-mono text-slate-100">0 B</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+                            <span class="text-[11px] text-slate-400 block mb-1">AST Node Count</span>
+                            <span id="statAstNodes" class="text-lg font-bold font-mono text-slate-100">0</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+                            <span class="text-[11px] text-slate-400 block mb-1">Parse Time</span>
+                            <span id="statParseTime" class="text-lg font-bold font-mono text-slate-100">0 ms</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Bar -->
+                <div class="flex items-center gap-3">
+                    <button id="btnDownload" disabled class="flex-1 py-2.5 px-4 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium text-slate-200 rounded-xl border border-slate-700 transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-download"></i> Download File
+                    </button>
+                    <button id="btnCopyClean" disabled class="flex-1 py-2.5 px-4 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium text-slate-200 rounded-xl border border-slate-700 transition flex items-center justify-center gap-2">
+                        <i class="fa-regular fa-copy"></i> Copy Code
+                    </button>
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 py-4 text-center text-xs text-slate-500 mt-auto">
+        JS DropCheck — Client-side JavaScript AST Syntax Inspector • Powered by Acorn
+    </footer>
+
+    <!-- Toast Notification Box -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-slate-800 border border-slate-700 text-white text-xs px-4 py-3 rounded-xl shadow-2xl transition-all duration-300 opacity-0 translate-y-4 pointer-events-none flex items-center gap-2 z-50">
+        <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toastMessage">Action completed successfully.</span>
+    </div>
+
+    <!-- Application JavaScript Logic -->
+    <script>
+        // --- Sample Code Snippets ---
+        const SAMPLES = {
+            valid: `/**
+ * Valid ES6+ JavaScript Sample
+ * User authentication and payload processor
+ */
+async function fetchUserData(userId) {
+    if (!userId) {
+        throw new Error("User ID is required");
+    }
+
+    try {
+        const response = await fetch(\`https://api.example.com/users/\${userId}\`);
+        const { id, name, roles = [] } = await response.json();
+
+        const isAdmin = roles.includes('admin');
+        console.log(\`User \${name} loaded. Admin status: \${isAdmin}\`);
+
+        return {
+            id,
+            name,
+            isAdmin,
+            timestamp: Date.now()
+        };
+    } catch (err) {
+        console.error("Failed to fetch user data:", err.message);
+        return null;
+    }
+}
+
+// Instantiate sample arrow function & destructuring
+const processBatch = (items = []) => items.map(item => ({ ...item, processed: true }));
+processBatch([{ id: 1 }, { id: 2 }]);`,
+
+            broken: `/**
+ * Broken JavaScript Sample with Common Syntax Errors
+ */
+function calculateTotal(items) {
+    let total = 0;
+    
+    // ERROR: Missing closing parenthesis in the for-loop header
+    for (let i = 0; i < items.length; i++ {
+        const item = items[i];
+        
+        // Unclosed string literal
+        console.log("Processing item: + item.name);
+        
+        total += item.price;
+    }
+
+    return total;
+}
+
+const cart = [{ name: 'Laptop', price: 999 }];
+console.log(calculateTotal(cart);`
+        };
+
+        // --- DOM Elements ---
+        const dropzoneContainer = document.getElementById('dropzoneContainer');
+        const fileInput = document.getElementById('fileInput');
+        const editorContainer = document.getElementById('editorContainer');
+        const codeEditor = document.getElementById('codeEditor');
+        const lineNumbers = document.getElementById('lineNumbers');
+        const statusBanner = document.getElementById('statusBanner');
+        const diagnosticsOutput = document.getElementById('diagnosticsOutput');
+        const validationBadge = document.getElementById('validationBadge');
+        
+        const tabDropzone = document.getElementById('tabDropzone');
+        const tabEditor = document.getElementById('tabEditor');
+        const ecmaSelect = document.getElementById('ecmaVersion');
+        const sourceTypeSelect = document.getElementById('sourceType');
+        
+        const statLines = document.getElementById('statLines');
+        const statSize = document.getElementById('statSize');
+        const statAstNodes = document.getElementById('statAstNodes');
+        const statParseTime = document.getElementById('statParseTime');
+
+        const btnLoadValidSample = document.getElementById('btnLoadValidSample');
+        const btnLoadBrokenSample = document.getElementById('btnLoadBrokenSample');
+        const btnClear = document.getElementById('btnClear');
+        const btnDownload = document.getElementById('btnDownload');
+        const btnCopyClean = document.getElementById('btnCopyClean');
+        const btnCopyCode = document.getElementById('btnCopyCode');
+        const fileNameText = document.getElementById('fileNameText');
+        const charCount = document.getElementById('charCount');
+
+        let currentFileName = "code.js";
+
+        // --- Event Listeners Initialization ---
+        window.addEventListener('DOMContentLoaded', () => {
+            setupDragAndDrop();
+            setupEditorSync();
+            setupControls();
+            
+            // Default: Load valid sample into view for instant feedback
+            loadSample('valid');
+        });
+
+        // --- Drag and Drop Handling ---
+        function setupDragAndDrop() {
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropzoneContainer.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzoneContainer.classList.add('drag-over');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropzoneContainer.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzoneContainer.classList.remove('drag-over');
+                }, false);
+            });
+
+            dropzoneContainer.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length > 0) {
+                    handleFileSelect(files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFileSelect(e.target.files[0]);
+                }
+            });
+        }
+
+        function handleFileSelect(file) {
+            currentFileName = file.name;
+            fileNameText.textContent = currentFileName;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target.result;
+                codeEditor.value = text;
+                switchToEditorView();
+                validateJavaScript(text);
+                showToast(`Loaded "${file.name}"`, 'success');
+            };
+            reader.onerror = () => {
+                showToast('Failed to read file', 'error');
+            };
+            reader.readAsText(file);
+        }
+
+        // --- Code Editor Sync & Line Numbers ---
+        function setupEditorSync() {
+            codeEditor.addEventListener('input', () => {
+                updateLineNumbers();
+                validateJavaScript(codeEditor.value);
+            });
+
+            codeEditor.addEventListener('scroll', () => {
+                lineNumbers.scrollTop = codeEditor.scrollTop;
+            });
+
+            codeEditor.addEventListener('keydown', (e) => {
+                // Support Tab key indentation in textarea
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const start = codeEditor.selectionStart;
+                    const end = codeEditor.selectionEnd;
+                    codeEditor.value = codeEditor.value.substring(0, start) + "  " + codeEditor.value.substring(end);
+                    codeEditor.selectionStart = codeEditor.selectionEnd = start + 2;
+                    updateLineNumbers();
+                    validateJavaScript(codeEditor.value);
+                }
+            });
+        }
+
+        function updateLineNumbers() {
+            const lines = codeEditor.value.split('\n').length;
+            const lineNums = Array.from({ length: lines }, (_, i) => i + 1).join('<br>');
+            lineNumbers.innerHTML = lineNums;
+            charCount.textContent = `${codeEditor.value.length} chars`;
+        }
+
+        // --- Tab Switching Logic ---
+        function switchToDropzoneView() {
+            dropzoneContainer.classList.remove('hidden');
+            editorContainer.classList.add('hidden');
+            tabDropzone.className = "px-4 py-2 text-xs font-medium rounded-lg bg-brand-600 text-white shadow-sm transition flex items-center gap-2";
+            tabEditor.className = "px-4 py-2 text-xs font-medium rounded-lg text-slate-400 hover:text-white transition flex items-center gap-2";
+        }
+
+        function switchToEditorView() {
+            dropzoneContainer.classList.add('hidden');
+            editorContainer.classList.remove('hidden');
+            editorContainer.classList.add('flex');
+            tabEditor.className = "px-4 py-2 text-xs font-medium rounded-lg bg-brand-600 text-white shadow-sm transition flex items-center gap-2";
+            tabDropzone.className = "px-4 py-2 text-xs font-medium rounded-lg text-slate-400 hover:text-white transition flex items-center gap-2";
+            updateLineNumbers();
+        }
+
+        function setupControls() {
+            tabDropzone.addEventListener('click', switchToDropzoneView);
+            tabEditor.addEventListener('click', switchToEditorView);
+
+            btnLoadValidSample.addEventListener('click', () => loadSample('valid'));
+            btnLoadBrokenSample.addEventListener('click', () => loadSample('broken'));
+            
+            btnClear.addEventListener('click', () => {
+                codeEditor.value = "";
+                currentFileName = "untitled.js";
+                fileNameText.textContent = currentFileName;
+                updateLineNumbers();
+                validateJavaScript("");
+                showToast("Editor cleared", "info");
+            });
+
+            ecmaSelect.addEventListener('change', () => validateJavaScript(codeEditor.value));
+            sourceTypeSelect.addEventListener('change', () => validateJavaScript(codeEditor.value));
+
+            btnCopyClean.addEventListener('click', copyCodeToClipboard);
+            btnCopyCode.addEventListener('click', copyCodeToClipboard);
+            btnDownload.addEventListener('click', downloadCodeFile);
+        }
+
+        function loadSample(type) {
+            codeEditor.value = SAMPLES[type];
+            currentFileName = type === 'valid' ? 'valid-sample.js' : 'broken-sample.js';
+            fileNameText.textContent = currentFileName;
+            switchToEditorView();
+            validateJavaScript(codeEditor.value);
+            showToast(`Loaded ${type} sample code`, type === 'valid' ? 'success' : 'info');
+        }
+
+        // --- Core Validation Engine (Acorn AST Parser + Fallback) ---
+        function validateJavaScript(code) {
+            const startTime = performance.now();
+            
+            // Calculate size and lines
+            const lineCount = code ? code.split('\n').length : 0;
+            const byteSize = new Blob([code]).size;
+            
+            statLines.textContent = lineCount;
+            statSize.textContent = formatBytes(byteSize);
+
+            if (!code || code.trim() === '') {
+                renderEmptyState();
+                return;
+            }
+
+            // Determine Acorn parsing options
+            let ecmaVal = ecmaSelect.value;
+            let ecmaVersionNum = 15; // default latest ESNext (2024)
+            if (ecmaVal !== 'latest') {
+                ecmaVersionNum = parseInt(ecmaVal, 10);
+            }
+
+            const parseOptions = {
+                ecmaVersion: ecmaVersionNum,
+                sourceType: sourceTypeSelect.value,
+                locations: true,
+                ranges: true
+            };
+
+            let ast = null;
+            let parseError = null;
+
+            try {
+                if (window.acorn) {
+                    ast = window.acorn.parse(code, parseOptions);
+                } else {
+                    // Fallback using Function constructor if CDN failed
+                    new Function(code);
+                }
+            } catch (err) {
+                parseError = err;
+            }
+
+            const parseDuration = (performance.now() - startTime).toFixed(2);
+            statParseTime.textContent = `${parseDuration} ms`;
+
+            if (!parseError) {
+                // SUCCESS: Valid JS
+                const astNodeCount = ast ? countAstNodes(ast) : 'N/A';
+                statAstNodes.textContent = astNodeCount;
+                renderValidState(astNodeCount, parseDuration);
+            } else {
+                // FAILURE: Syntax Error
+                statAstNodes.textContent = '0';
+                renderErrorState(parseError, code);
+            }
+        }
+
+        // Count nodes in the generated AST recursively
+        function countAstNodes(node) {
+            if (!node || typeof node !== 'object') return 0;
+            let count = 1;
+            for (const key in node) {
+                if (key === 'loc' || key === 'range') continue;
+                const child = node[key];
+                if (Array.isArray(child)) {
+                    child.forEach(c => {
+                        if (c && typeof c.type === 'string') count += countAstNodes(c);
+                    });
+                } else if (child && typeof child.type === 'string') {
+                    count += countAstNodes(child);
+                }
+            }
+            return count;
+        }
+
+        // --- Human-Friendly Error Explanations ---
+        function getFriendlyExplanation(errorMsg) {
+            const msg = errorMsg.toLowerCase();
+            if (msg.includes('unexpected token')) {
+                return 'There is an unexpected character or symbol that JavaScript does not expect at this location. Check for extra or misplaced brackets, commas, or typos.';
+            } else if (msg.includes('unterminated string constant') || msg.includes('unterminated string')) {
+                return 'A string literal was opened with a quote (\' or ") but was never closed before the line ended.';
+            } else if (msg.includes('missing') && msg.includes('after argument list')) {
+                return 'You opened a function call with "(" but forgot the closing ")" parenthesis.';
+            } else if (msg.includes('unexpected end of input')) {
+                return 'The file ended abruptly. You likely forgot to close a curly brace "}", bracket "]", or parenthesis ")".';
+            } else if (msg.includes('identifier') && msg.includes('has already been declared')) {
+                return 'A variable with this exact name was already declared in the same scope using "let" or "const".';
+            } else if (msg.includes('return statement outside of function')) {
+                return 'A "return" keyword can only be used inside a function block.';
+            } else if (msg.includes('await is only valid in async functions')) {
+                return 'The "await" expression can only be used inside functions declared with the "async" keyword or inside an ES module.';
+            }
+            return 'JavaScript parser encountered a syntax error at this exact position.';
+        }
+
+        // --- UI Rendering States ---
+        function renderEmptyState() {
+            statusBanner.className = "hidden";
+            validationBadge.className = "text-xs px-2.5 py-1 rounded-full font-medium bg-slate-800 text-slate-400";
+            validationBadge.textContent = "Awaiting Code";
+
+            diagnosticsOutput.innerHTML = `
+                <p class="text-slate-400 italic">No code checked yet. Upload a file or type code in the editor to instantly check syntax validity.</p>
+            `;
+
+            btnDownload.disabled = true;
+            btnCopyClean.disabled = true;
+        }
+
+        function renderValidState(nodeCount, duration) {
+            statusBanner.className = "block bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 text-emerald-300 shadow-lg";
+            statusBanner.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl shrink-0">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-emerald-200">Valid JavaScript Syntax!</h3>
+                        <p class="text-xs text-emerald-400/80">No syntax errors found. Parsed smoothly in ${duration} ms using AST parser.</p>
+                    </div>
+                </div>
+            `;
+
+            validationBadge.className = "text-xs px-2.5 py-1 rounded-full font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+            validationBadge.textContent = "Valid Syntax";
+
+            diagnosticsOutput.innerHTML = `
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                        <span class="text-slate-400">Syntax Status</span>
+                        <span class="text-emerald-400 font-medium"><i class="fa-solid fa-check text-xs"></i> 0 Errors</span>
+                    </div>
+                    <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                        <span class="text-slate-400">Parser Compliance</span>
+                        <span class="text-slate-200 font-mono">${ecmaSelect.options[ecmaSelect.selectedIndex].text}</span>
+                    </div>
+                    <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                        <span class="text-slate-400">Structure Nodes</span>
+                        <span class="text-brand-400 font-mono font-bold">${nodeCount} AST Nodes</span>
+                    </div>
+                </div>
+            `;
+
+            btnDownload.disabled = false;
+            btnCopyClean.disabled = false;
+        }
+
+        function renderErrorState(err, code) {
+            const loc = err.loc || { line: 1, column: 0 };
+            const lineNum = loc.line;
+            const colNum = loc.column;
+            const rawMessage = err.message || err.toString();
+            const cleanMessage = rawMessage.replace(/\s*\(\d+:\d+\)$/, ''); // strip trailing line/col tag
+            const friendlyExplanation = getFriendlyExplanation(cleanMessage);
+
+            // Extract code snippet context around error
+            const lines = code.split('\n');
+            const errorLineText = lines[lineNum - 1] || "";
+
+            statusBanner.className = "block bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 text-rose-300 shadow-lg";
+            statusBanner.innerHTML = `
+                <div class="flex items-start gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center text-xl shrink-0 mt-0.5">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="text-sm font-bold text-rose-200">Syntax Error Detected</h3>
+                        <p class="text-xs text-rose-300/90 font-mono mt-0.5">${escapeHtml(cleanMessage)}</p>
+                        <div class="mt-2 text-xs font-sans text-slate-300 bg-slate-950/60 p-2.5 rounded-xl border border-rose-500/20">
+                            <strong class="text-rose-400">Explanation:</strong> ${friendlyExplanation}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            validationBadge.className = "text-xs px-2.5 py-1 rounded-full font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30";
+            validationBadge.textContent = `Error on Line ${lineNum}`;
+
+            // Error Context Code Box
+            diagnosticsOutput.innerHTML = `
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between text-slate-400">
+                        <span>Location:</span>
+                        <span class="font-mono text-rose-400 font-bold">Line ${lineNum}, Column ${colNum + 1}</span>
+                    </div>
+
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-xs overflow-x-auto">
+                        <div class="text-slate-500 mb-1">// Snippet around line ${lineNum}:</div>
+                        ${lineNum > 1 ? `<div class="text-slate-600 line-through opacity-50">${lineNum - 1} | ${escapeHtml(lines[lineNum - 2] || '')}</div>` : ''}
+                        <div class="text-rose-400 bg-rose-500/10 -mx-3 px-3 py-1 font-bold border-l-2 border-rose-500">
+                            ${lineNum} | ${escapeHtml(errorLineText)}
+                            <div class="text-rose-400/80 font-mono text-[10px] tracking-widest pl-4">
+                                ${' '.repeat(Math.max(0, colNum + (lineNum.toString().length + 3)))}^ Syntax Error Here
+                            </div>
+                        </div>
+                        ${lineNum < lines.length ? `<div class="text-slate-600">${lineNum + 1} | ${escapeHtml(lines[lineNum + 1] || '')}</div>` : ''}
+                    </div>
+                </div>
+            `;
+
+            btnDownload.disabled = false;
+            btnCopyClean.disabled = false;
+        }
+
+        // --- Helper Utilities ---
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        function copyCodeToClipboard() {
+            const code = codeEditor.value;
+            if (!code) return;
+            
+            // execCommand copy fallback
+            const dummy = document.createElement("textarea");
+            document.body.appendChild(dummy);
+            dummy.value = code;
+            dummy.select();
+            document.execCommand("copy");
+            document.body.removeChild(dummy);
+
+            showToast("Code copied to clipboard!", "success");
+        }
+
+        function downloadCodeFile() {
+            const code = codeEditor.value;
+            if (!code) return;
+
+            const blob = new Blob([code], { type: "text/javascript" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = currentFileName || "clean-code.js";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showToast(`Downloaded "${currentFileName}"`, "success");
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastMessage.textContent = message;
+
+            if (type === 'success') {
+                toastIcon.className = 'fa-solid fa-circle-check text-emerald-400';
+            } else if (type === 'error') {
+                toastIcon.className = 'fa-solid fa-circle-xmark text-rose-400';
+            } else {
+                toastIcon.className = 'fa-solid fa-circle-info text-brand-400';
+            }
+
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
